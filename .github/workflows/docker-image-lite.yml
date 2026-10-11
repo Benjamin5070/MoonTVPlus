@@ -10,6 +10,8 @@ on:
         type: string
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -73,15 +75,18 @@ jobs:
           tags: |
             ghcr.io/mtvpls/moontvplus-lite:${{ steps.version.outputs.version }}
             ghcr.io/mtvpls/moontvplus-lite:${{ github.event.inputs.tag || 'latest' }}
-          outputs: type=image,name=ghcr.io/mtvpls/moontvplus-lite,name-canonical=true,push=true
+          # PRs validate the image build but must not push to the upstream GHCR package.
+          push: ${{ github.event_name != 'pull_request' }}
 
       - name: Export digest
+        if: github.event_name != 'pull_request'
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload digest
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: digests-${{ env.PLATFORM_NAME }}
@@ -90,6 +95,7 @@ jobs:
           retention-days: 1
 
   merge:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     needs:
       - build
