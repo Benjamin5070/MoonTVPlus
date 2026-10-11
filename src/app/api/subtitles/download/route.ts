@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       .replace(/[\\/\r\n"]/g, '_')
       .slice(0, 180);
     const extension = fileName.match(/\.([a-z0-9]{2,5})$/i)?.[1]?.toLowerCase() || 'srt';
-    if (!['srt', 'vtt', 'ass', 'ssa', 'ttml', 'dfxp', 'xml', 'sbv', 'sub', 'lrc'].includes(extension)) {
+    if (!['srt', 'vtt', 'ass', 'ssa', 'ttml', 'dfxp', 'xml', 'sbv', 'sub', 'lrc', 'sup', 'pgs'].includes(extension)) {
       return NextResponse.json({ error: '该在线字幕格式暂不支持' }, { status: 415 });
     }
 
