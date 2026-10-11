@@ -41,6 +41,10 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
+      - name: Set lowercase repository owner
+        id: lowercase
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
       - name: Read version
         id: version
         run: echo "version=v$(tr -d '[:space:]' < VERSION.txt)" >> "$GITHUB_OUTPUT"
@@ -59,7 +63,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/mtvpls/moontvplus-lite
+          images: ghcr.io/${{ steps.lowercase.outputs.owner }}/moontvplus-lite
           tags: |
             type=raw,value=${{ steps.version.outputs.version }}
             type=raw,value=${{ github.event.inputs.tag || 'latest' }}
@@ -73,8 +77,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: |
-            ghcr.io/mtvpls/moontvplus-lite:${{ steps.version.outputs.version }}
-            ghcr.io/mtvpls/moontvplus-lite:${{ github.event.inputs.tag || 'latest' }}
+            ghcr.io/${{ steps.lowercase.outputs.owner }}/moontvplus-lite:${{ steps.version.outputs.version }}
+            ghcr.io/${{ steps.lowercase.outputs.owner }}/moontvplus-lite:${{ github.event.inputs.tag || 'latest' }}
           # PRs validate the image build but must not push to the upstream GHCR package.
           push: ${{ github.event_name != 'pull_request' }}
 
@@ -103,6 +107,10 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
+      - name: Set lowercase repository owner
+        id: lowercase
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
       - name: Read version
         id: version
         run: echo "version=v$(tr -d '[:space:]' < VERSION.txt)" >> "$GITHUB_OUTPUT"
@@ -128,9 +136,9 @@ jobs:
         working-directory: /tmp/digests
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/mtvpls/moontvplus-lite:${{ steps.version.outputs.version }} \
-            -t ghcr.io/mtvpls/moontvplus-lite:${{ github.event.inputs.tag || 'latest' }} \
-            $(printf 'ghcr.io/mtvpls/moontvplus-lite@sha256:%s ' *)
+            -t ghcr.io/${{ steps.lowercase.outputs.owner }}/moontvplus-lite:${{ steps.version.outputs.version }} \
+            -t ghcr.io/${{ steps.lowercase.outputs.owner }}/moontvplus-lite:${{ github.event.inputs.tag || 'latest' }} \
+            $(printf 'ghcr.io/${{ steps.lowercase.outputs.owner }}/moontvplus-lite@sha256:%s ' *)
 
   cleanup-untagged:
     runs-on: ubuntu-latest
@@ -141,7 +149,7 @@ jobs:
         uses: dataaxiom/ghcr-cleanup-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          owner: mtvpls
+          owner: ${{ github.repository_owner }}
           package: moontvplus-lite
           delete-untagged: true
           validate: true
