@@ -2565,6 +2565,15 @@ function PlayPageClient() {
           ? 'scaleY(-1)'
           : 'none';
   };
+  const [showOnlineSubtitleSearch, setShowOnlineSubtitleSearch] = useState(false);
+  const [onlineSubtitleQuery, setOnlineSubtitleQuery] = useState('');
+  const [onlineSubtitleResults, setOnlineSubtitleResults] = useState<Array<{
+    fileId: number; fileName: string; title: string; release: string;
+    language: string; downloads: number; hearingImpaired: boolean;
+    season: number | null; episode: number | null;
+  }>>([]);
+  const [onlineSubtitleLoading, setOnlineSubtitleLoading] = useState(false);
+  const [onlineSubtitleDownloading, setOnlineSubtitleDownloading] = useState<number | null>(null);
   const customSubtitleInputRef = useRef<HTMLInputElement | null>(null);
   const customSubtitleRef = useRef<CustomSubtitleState | null>(null);
   const currentSubtitleLabelRef = useRef<string>('关闭');
@@ -2912,6 +2921,78 @@ function PlayPageClient() {
     switchSubtitle(subtitle.url, subtitle.label);
   };
 
+  const searchOnlineSubtitles = async () => {
+    const query = onlineSubtitleQuery.trim();
+    if (!query || onlineSubtitleLoading) return;
+    setOnlineSubtitleLoading(true);
+    setOnlineSubtitleResults([]);
+    try {
+      const params = new URLSearchParams({ query });
+      if (detailRef.current?.year) params.set('year', detailRef.current.year);
+      const response = await fetch(`/api/subtitles/search?${params.toString()}`, {
+        credentials: 'same-origin',
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || '在线字幕搜索失败');
+      setOnlineSubtitleResults(Array.isArray(payload.results) ? payload.results : []);
+      if (!payload.results?.length) {
+        setToast({ message: '没有找到匹配的在线字幕', type: 'info', onClose: () => setToast(null) });
+      }
+    } catch (error) {
+      setToast({
+        message: error instanceof Error ? error.message : '在线字幕搜索失败',
+        type: 'error',
+        onClose: () => setToast(null),
+      });
+    } finally {
+      setOnlineSubtitleLoading(false);
+    }
+  };
+
+  const loadOnlineSubtitle = async (item: {
+    fileId: number; fileName: string; title: string;
+  }) => {
+    if (onlineSubtitleDownloading !== null) return;
+    setOnlineSubtitleDownloading(item.fileId);
+    try {
+      const response = await fetch('/api/subtitles/download', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId: item.fileId, fileName: item.fileName }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || '下载在线字幕失败');
+      }
+      const blob = await response.blob();
+      const file = new File([blob], item.fileName || 'online-subtitle.srt', {
+        type: 'text/plain;charset=utf-8',
+      });
+      const extension = getSubtitleFileExtension(file.name);
+      const label = `在线：${item.title || file.name}`;
+      if (isAdvancedSubtitleFormat(extension)) {
+        await loadAdvancedCustomSubtitle(file, extension);
+      } else if (BITSUB_SUBTITLE_FORMATS.has(extension)) {
+        await loadBitsubCustomSubtitle(file, extension);
+      } else {
+        await loadNativeCustomSubtitle(file);
+      }
+      setShowOnlineSubtitleSearch(false);
+      setToast({ message: `已加载在线字幕：${file.name}`, type: 'success', onClose: () => setToast(null) });
+      currentSubtitleLabelRef.current = label;
+      updateSubtitleSetting();
+    } catch (error) {
+      setToast({
+        message: error instanceof Error ? error.message : '加载在线字幕失败',
+        type: 'error',
+        onClose: () => setToast(null),
+      });
+    } finally {
+      setOnlineSubtitleDownloading(null);
+    }
+  };
+
   const removeSubtitleSetting = () => {
     try {
       artPlayerRef.current?.setting.remove('subtitle-selector');
@@ -2934,6 +3015,7 @@ function PlayPageClient() {
     const subtitleOptions = [
       { html: '关闭', action: 'close' },
       { html: '上传本地字幕', action: 'upload' },
+      { html: '在线搜索字幕', action: 'online-search' },
       ...sourceSubtitles.map((sub: SourceSubtitleItem) => {
         const isAdvanced = isAdvancedSourceSubtitle(sub);
         const isBitsub = isBitsubSourceSubtitle(sub);
@@ -2978,6 +3060,13 @@ function PlayPageClient() {
 
         if (item.action === 'upload') {
           customSubtitleInputRef.current?.click();
+          return currentSubtitleLabelRef.current;
+        }
+
+        if (item.action === 'online-search') {
+          setOnlineSubtitleQuery(videoTitle || detailRef.current?.title || '');
+          setOnlineSubtitleResults([]);
+          setShowOnlineSubtitleSearch(true);
           return currentSubtitleLabelRef.current;
         }
 
@@ -12062,6 +12151,49 @@ function PlayPageClient() {
           </>
         )}
       </div>
+
+      {showOnlineSubtitleSearch && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-xl border border-gray-700 bg-gray-900 text-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-700 px-5 py-4">
+              <h3 className="text-lg font-semibold">在线搜索字幕</h3>
+              <button type="button" className="rounded p-2 hover:bg-gray-800" onClick={() => setShowOnlineSubtitleSearch(false)} aria-label="关闭在线字幕搜索">✕</button>
+            </div>
+            <form className="flex gap-2 border-b border-gray-700 p-4" onSubmit={(event) => { event.preventDefault(); void searchOnlineSubtitles(); }}>
+              <input
+                value={onlineSubtitleQuery}
+                onChange={(event) => setOnlineSubtitleQuery(event.target.value)}
+                placeholder="输入影片名称"
+                className="min-w-0 flex-1 rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                maxLength={120}
+                autoFocus
+              />
+              <button type="submit" disabled={onlineSubtitleLoading || !onlineSubtitleQuery.trim()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium disabled:opacity-50">
+                {onlineSubtitleLoading ? '搜索中…' : '搜索'}
+              </button>
+            </form>
+            <div className="max-h-[55vh] overflow-y-auto p-3">
+              {onlineSubtitleLoading && <div className="py-8 text-center text-sm text-gray-400">正在搜索字幕…</div>}
+              {!onlineSubtitleLoading && onlineSubtitleResults.length === 0 && <div className="py-8 text-center text-sm text-gray-400">输入片名搜索中文或英文字幕</div>}
+              <div className="space-y-2">
+                {onlineSubtitleResults.map((item) => (
+                  <div key={item.fileId} className="flex items-center gap-3 rounded-lg border border-gray-700 p-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="break-words text-sm font-medium">{item.fileName}</div>
+                      <div className="mt-1 text-xs text-gray-400">
+                        {[item.language, item.release, item.downloads ? `下载 ${item.downloads} 次` : '', item.hearingImpaired ? '听障字幕' : ''].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => void loadOnlineSubtitle(item)} disabled={onlineSubtitleDownloading !== null} className="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-sm disabled:opacity-50">
+                      {onlineSubtitleDownloading === item.fileId ? '加载中…' : '使用字幕'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast通知 */}
       {toast && <Toast {...toast} />}
