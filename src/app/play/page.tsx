@@ -2568,12 +2568,12 @@ function PlayPageClient() {
   const [showOnlineSubtitleSearch, setShowOnlineSubtitleSearch] = useState(false);
   const [onlineSubtitleQuery, setOnlineSubtitleQuery] = useState('');
   const [onlineSubtitleResults, setOnlineSubtitleResults] = useState<Array<{
-    fileId: number; fileName: string; title: string; release: string;
+    fileId: string | number; fileName: string; title: string; release: string;
     language: string; downloads: number; hearingImpaired: boolean;
-    season: number | null; episode: number | null;
+    season: number | null; episode: number | null; provider?: string;
   }>>([]);
   const [onlineSubtitleLoading, setOnlineSubtitleLoading] = useState(false);
-  const [onlineSubtitleDownloading, setOnlineSubtitleDownloading] = useState<number | null>(null);
+  const [onlineSubtitleDownloading, setOnlineSubtitleDownloading] = useState<string | number | null>(null);
   const customSubtitleInputRef = useRef<HTMLInputElement | null>(null);
   const customSubtitleRef = useRef<CustomSubtitleState | null>(null);
   const currentSubtitleLabelRef = useRef<string>('关闭');
@@ -2950,7 +2950,7 @@ function PlayPageClient() {
   };
 
   const loadOnlineSubtitle = async (item: {
-    fileId: number; fileName: string; title: string;
+    fileId: string | number; fileName: string; title: string;
   }) => {
     if (onlineSubtitleDownloading !== null) return;
     setOnlineSubtitleDownloading(item.fileId);
@@ -12181,7 +12181,7 @@ function PlayPageClient() {
                     <div className="min-w-0 flex-1">
                       <div className="break-words text-sm font-medium">{item.fileName}</div>
                       <div className="mt-1 text-xs text-gray-400">
-                        {[item.language, item.release, item.downloads ? `下载 ${item.downloads} 次` : '', item.hearingImpaired ? '听障字幕' : ''].filter(Boolean).join(' · ')}
+                        {[item.provider || (typeof item.fileId === 'string' && item.fileId.startsWith('subdl:') ? 'SubDL' : 'OpenSubtitles'), item.language, item.release, item.downloads ? `下载 ${item.downloads} 次` : '', item.hearingImpaired ? '听障字幕' : ''].filter(Boolean).join(' · ')}
                       </div>
                     </div>
                     <button type="button" onClick={() => void loadOnlineSubtitle(item)} disabled={onlineSubtitleDownloading !== null} className="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-sm disabled:opacity-50">
