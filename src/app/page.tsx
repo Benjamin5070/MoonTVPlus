@@ -49,6 +49,8 @@ function HomeClient() {
   const [hotVarietyShows, setHotVarietyShows] = useState<DoubanItem[]>([]);
   const [hotDuanju, setHotDuanju] = useState<any[]>([]);
   const [upcomingContent, setUpcomingContent] = useState<TMDBItem[]>([]);
+  const [netflixMovies, setNetflixMovies] = useState<TMDBItem[]>([]);
+  const [netflixTvShows, setNetflixTvShows] = useState<TMDBItem[]>([]);
   const [bangumiCalendarData, setBangumiCalendarData] = useState<
     BangumiCalendarData[]
   >([]);
@@ -62,6 +64,8 @@ function HomeClient() {
     { id: 'hotTvShows', name: '热门剧集', enabled: true, order: 3 },
     { id: 'hotVarietyShows', name: '热门综艺', enabled: true, order: 4 },
     { id: 'upcomingContent', name: '即将上映', enabled: true, order: 5 },
+    { id: 'netflixMovies', name: 'Netflix 热门电影', enabled: true, order: 6 },
+    { id: 'netflixTvShows', name: 'Netflix 热门剧集', enabled: true, order: 7 },
   ]);
   const [homeBannerEnabled, setHomeBannerEnabled] = useState(true);
   const [homeContinueWatchingEnabled, setHomeContinueWatchingEnabled] =
@@ -259,7 +263,14 @@ function HomeClient() {
     const savedHomeModules = localStorage.getItem('homeModules');
     if (savedHomeModules) {
       try {
-        setHomeModules(JSON.parse(savedHomeModules));
+        const parsedModules = JSON.parse(savedHomeModules) as HomeModule[];
+        setHomeModules((currentModules) => {
+          const savedIds = new Set(parsedModules.map((module) => module.id));
+          const missingModules = currentModules
+            .filter((module) => !savedIds.has(module.id))
+            .map((module, index) => ({ ...module, order: parsedModules.length + index }));
+          return [...parsedModules, ...missingModules];
+        });
       } catch (error) {
         console.error('解析首页模块配置失败:', error);
       }
@@ -414,6 +425,7 @@ function HomeClient() {
     const bangumiCache = getCache('homepage_bangumi');
     const duanjuCache = getCache('homepage_duanju');
     const upcomingCache = getCache('homepage_upcoming');
+    const netflixCache = getCache('homepage_netflix');
 
     if (moviesCache?.data) setHotMovies(moviesCache.data);
     if (tvShowsCache?.data) setHotTvShows(tvShowsCache.data);
@@ -421,6 +433,10 @@ function HomeClient() {
     if (bangumiCache?.data) setBangumiCalendarData(bangumiCache.data);
     if (duanjuCache?.data) setHotDuanju(duanjuCache.data);
     if (upcomingCache?.data) setUpcomingContent(upcomingCache.data);
+    if (netflixCache?.data) {
+      setNetflixMovies(netflixCache.data.movies || []);
+      setNetflixTvShows(netflixCache.data.tvShows || []);
+    }
 
     const hasCache =
       moviesCache ||
@@ -428,7 +444,8 @@ function HomeClient() {
       varietyCache ||
       bangumiCache ||
       duanjuCache ||
-      upcomingCache;
+      upcomingCache ||
+      netflixCache;
     if (hasCache) setLoading(false);
 
     const needsRefresh =
@@ -443,7 +460,9 @@ function HomeClient() {
       !duanjuCache ||
       duanjuCache.expired ||
       !upcomingCache ||
-      upcomingCache.expired;
+      upcomingCache.expired ||
+      !netflixCache ||
+      netflixCache.expired;
 
     if (needsRefresh) {
       (async () => {
@@ -548,6 +567,24 @@ function HomeClient() {
             }
           } catch (error) {
             console.error('获取TMDB即将上映数据失败:', error);
+          }
+
+          try {
+            const response = await fetch('/api/tmdb/netflix');
+            if (response.ok) {
+              const result = await response.json();
+              if (result.code === 200) {
+                const movies = Array.isArray(result.movies) ? result.movies : [];
+                const tvShows = Array.isArray(result.tvShows) ? result.tvShows : [];
+                setNetflixMovies(movies);
+                setNetflixTvShows(tvShows);
+                if (movies.length || tvShows.length) {
+                  setCache('homepage_netflix', { movies, tvShows });
+                }
+              }
+            }
+          } catch (error) {
+            console.error('获取 Netflix 全球热门失败:', error);
           }
 
           setLoading(false);
@@ -835,6 +872,82 @@ function HomeClient() {
                     </div>
                   ))}
             </ScrollableRow>
+          </section>
+        );
+
+      case 'netflixMovies':
+        if (netflixMovies.length === 0) return null;
+        return (
+          <section key='netflixMovies' className='mb-8'>
+            <div className='mb-4 flex items-center justify-between'>
+              <div>
+                <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
+                  Netflix 全球热门电影
+                </h2>
+                <p className='mt-1 text-xs text-gray-500 dark:text-gray-400'>
+                  汇总美国、英国、马来西亚、日本、韩国可观看的 Netflix 片库，按 TMDB 热度排序
+                </p>
+              </div>
+            </div>
+            <ScrollableRow>
+              {netflixMovies.map((item) => (
+                <div
+                  key={`netflix-movie-${item.id}`}
+                  className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                >
+                  <VideoCard
+                    title={item.title}
+                    poster={processImageUrl(getTMDBImageUrl(item.poster_path))}
+                    year={item.release_date?.split('-')?.[0] || ''}
+                    rate={item.vote_average > 0 ? item.vote_average.toFixed(1) : ''}
+                    type='movie'
+                    from='tmdb'
+                    tmdb_id={item.id}
+                    releaseDate={item.release_date}
+                  />
+                </div>
+              ))}
+            </ScrollableRow>
+            <p className='mt-2 text-[11px] text-gray-400 dark:text-gray-500'>
+              影视可用地区因授权而异。数据由 TMDB 提供，流媒体可用性数据由 JustWatch 提供。
+            </p>
+          </section>
+        );
+
+      case 'netflixTvShows':
+        if (netflixTvShows.length === 0) return null;
+        return (
+          <section key='netflixTvShows' className='mb-8'>
+            <div className='mb-4'>
+              <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
+                Netflix 全球热门剧集
+              </h2>
+              <p className='mt-1 text-xs text-gray-500 dark:text-gray-400'>
+                汇总多个地区的 Netflix 片库，按 TMDB 热度排序；不是 Netflix 官方全球排名
+              </p>
+            </div>
+            <ScrollableRow>
+              {netflixTvShows.map((item) => (
+                <div
+                  key={`netflix-tv-${item.id}`}
+                  className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
+                >
+                  <VideoCard
+                    title={item.title}
+                    poster={processImageUrl(getTMDBImageUrl(item.poster_path))}
+                    year={item.release_date?.split('-')?.[0] || ''}
+                    rate={item.vote_average > 0 ? item.vote_average.toFixed(1) : ''}
+                    type='tv'
+                    from='tmdb'
+                    tmdb_id={item.id}
+                    releaseDate={item.release_date}
+                  />
+                </div>
+              ))}
+            </ScrollableRow>
+            <p className='mt-2 text-[11px] text-gray-400 dark:text-gray-500'>
+              流媒体可用性数据由 JustWatch 提供。
+            </p>
           </section>
         );
 
