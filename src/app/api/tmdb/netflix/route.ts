@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 
 import { getConfig } from '@/lib/config';
 import { safeFetch } from '@/lib/safe-http';
+import { getNextApiKey } from '@/lib/tmdb.client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,7 +22,7 @@ async function discoverNetflix(
 ) {
   const baseUrl = (reverseProxyBaseUrl || 'https://api.themoviedb.org').replace(/\/$/, '');
   const params = new URLSearchParams({
-    api_key: apiKey.split(',')[0].trim(),
+    api_key: getNextApiKey(apiKey),
     language: 'zh-CN',
     page: '1',
     sort_by: 'popularity.desc',
